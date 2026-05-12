@@ -12,6 +12,8 @@ jobs:
   send-digest:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout repository
