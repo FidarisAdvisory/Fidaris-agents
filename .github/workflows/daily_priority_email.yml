@@ -1,0 +1,40 @@
+name: Daily Priority Email
+
+on:
+  schedule:
+    # 7:00 AM CST (UTC-6) in winter = 13:00 UTC
+    # 8:00 AM CDT (UTC-5) in summer = 13:00 UTC
+    # Adjust the hour here if you want a different send time.
+    - cron: '0 13 * * *'
+  workflow_dispatch: # allow manual trigger for testing
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run daily priority agent
+        env:
+          ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          NOTION_API_TOKEN:     ${{ secrets.NOTION_API_TOKEN }}
+          NOTION_DATABASE_ID:   ${{ secrets.NOTION_DATABASE_ID }}
+          RECIPIENT_EMAIL:      ${{ secrets.RECIPIENT_EMAIL }}
+          USER_EMAIL:           ${{ vars.USER_EMAIL }}
+          USER_TIMEZONE:        America/Chicago
+        run: python -m agent.main
