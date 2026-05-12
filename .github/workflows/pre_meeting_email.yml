@@ -1,0 +1,39 @@
+name: Pre-Meeting Brief
+
+on:
+  schedule:
+    # Runs every 15 minutes. Sends a briefing when a meeting is 25-45 min away.
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  pre-meeting-brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pre-meeting agent
+        env:
+          ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          NOTION_API_TOKEN:     ${{ secrets.NOTION_API_TOKEN }}
+          RECIPIENT_EMAIL:      ${{ secrets.RECIPIENT_EMAIL }}
+          USER_EMAIL:           ${{ vars.USER_EMAIL }}
+          USER_TIMEZONE:        America/Chicago
+        run: python -m agent.pre_meeting_main
