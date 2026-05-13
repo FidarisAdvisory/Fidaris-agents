@@ -19,20 +19,18 @@ AI_LEADS_CRM_ID = "b285e78b-ede5-4b0a-8798-126b86fa58e6"
 
 
 def get_monthly_revenue() -> dict:
-    """
-    Query each client time log for this month's billable hours,
-    calculate revenue, and pull AI training pipeline value from CRM.
-    """
     token = os.environ.get("NOTION_API_TOKEN")
     if not token:
-        print("NOTION_API_TOKEN not set. Skipping revenue data.")
+        print("[REVENUE] NOTION_API_TOKEN is not set — skipping revenue data.")
         return {}
+
+    print(f"[REVENUE] NOTION_API_TOKEN is set (length: {len(token)})")
 
     try:
         from notion_client import Client
         notion = Client(auth=token)
     except ImportError:
-        print("notion-client not installed. Skipping revenue data.")
+        print("[REVENUE] notion-client package not installed.")
         return {}
 
     today = datetime.date.today()
@@ -44,11 +42,14 @@ def get_monthly_revenue() -> dict:
     month_end = month_end.isoformat()
     month_name = today.strftime("%B %Y")
 
+    print(f"[REVENUE] Querying for {month_name} ({month_start} to {month_end})")
+
     client_revenue = {}
     total_earned = 0.0
 
     for client_name, db_id in TIME_LOG_DATABASES.items():
         rate = HOURLY_RATES[client_name]
+        print(f"[REVENUE] Querying {client_name} (db: {db_id})...")
         try:
             response = notion.databases.query(
                 database_id=db_id,
@@ -62,6 +63,8 @@ def get_monthly_revenue() -> dict:
                 },
             )
             total_hours = _sum_hours(response)
+            print(f"[REVENUE]   {client_name}: {len(response.get('results', []))} entries, {total_hours:.1f} billable hours")
+
             while response.get("has_more"):
                 response = notion.databases.query(
                     database_id=db_id, page_size=100,
@@ -83,13 +86,17 @@ def get_monthly_revenue() -> dict:
                 "rate": rate,
                 "revenue": revenue,
             }
-            print(f"  {client_name}: {total_hours:.1f} hrs x ${rate} = ${revenue:.2f}")
+            print(f"[REVENUE]   {client_name}: {total_hours:.1f} hrs x ${rate} = ${revenue:.2f}")
 
         except Exception as e:
-            print(f"  Error querying {client_name} time log: {e}")
+            print(f"[REVENUE] ERROR querying {client_name}: {type(e).__name__}: {e}")
             client_revenue[client_name] = {"hours": 0.0, "rate": rate, "revenue": 0.0}
 
+    print(f"[REVENUE] Total earned this month: ${total_earned:.2f}")
+
+    print("[REVENUE] Querying AI Leads CRM...")
     pipeline = _get_pipeline(notion)
+    print(f"[REVENUE] Pipeline: ${pipeline.get('total_value', 0):.2f} across {pipeline.get('active_count', 0)} leads")
 
     return {
         "month": month_name,
@@ -109,7 +116,6 @@ def _sum_hours(response: dict) -> float:
 
 
 def _get_pipeline(notion) -> dict:
-    """Sum Revenue field for all active (non-lost, non-completed) leads."""
     try:
         response = notion.databases.query(
             database_id=AI_LEADS_CRM_ID,
@@ -122,6 +128,7 @@ def _get_pipeline(notion) -> dict:
                 ]
             },
         )
+        print(f"[REVENUE]   CRM returned {len(response.get('results', []))} active leads")
 
         total_value = 0.0
         active_count = 0
@@ -129,7 +136,6 @@ def _get_pipeline(notion) -> dict:
 
         for page in response.get("results", []):
             props = page.get("properties", {})
-
             revenue_val = (props.get("Revenue") or {}).get("number") or 0
             total_value += revenue_val
             active_count += 1
@@ -160,7 +166,6 @@ def _get_pipeline(notion) -> dict:
                 })
 
         hot_leads.sort(key=lambda x: x.get("next_action_date") or "9999")
-
         return {
             "total_value": round(total_value, 2),
             "active_count": active_count,
@@ -168,5 +173,5 @@ def _get_pipeline(notion) -> dict:
         }
 
     except Exception as e:
-        print(f"  Error querying AI Leads CRM: {e}")
+        print(f"[REVENUE] ERROR querying AI Leads CRM: {type(e).__name__}: {e}")
         return {"total_value": 0.0, "active_count": 0, "hot_leads": []}
