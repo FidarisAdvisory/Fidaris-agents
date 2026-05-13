@@ -6,6 +6,7 @@ from agent.calendar_client import get_calendar_data
 from agent.claude_synthesizer import synthesize_priorities
 from agent.gmail_client import get_unanswered_requests, send_digest
 from agent.notion_client import get_notion_tasks
+from agent.revenue_client import get_monthly_revenue
 
 
 def main() -> None:
@@ -24,15 +25,17 @@ def main() -> None:
 
     print("Fetching Notion tasks...")
     notion_data = get_notion_tasks(calendar_data["today_date"], calendar_data["tomorrow_date"])
-    print(f"  Today: {len(notion_data['today'])} tasks")
-    print(f"  Tomorrow: {len(notion_data['tomorrow'])} tasks")
+    print(f"  Today: {len(notion_data['today'])} tasks, Tomorrow: {len(notion_data['tomorrow'])} tasks")
+
+    print("Fetching revenue & pipeline data...")
+    revenue_data = get_monthly_revenue()
 
     print("Scanning for unanswered emails...")
     unanswered = get_unanswered_requests(credentials, user_email)
     print(f"  Found {len(unanswered)} unanswered thread(s)")
 
     print("Synthesizing priorities with Claude...")
-    digest_html = synthesize_priorities(calendar_data, notion_data, unanswered)
+    digest_html = synthesize_priorities(calendar_data, notion_data, unanswered, revenue_data)
 
     print(f"Sending email to {recipient}...")
     send_digest(credentials, recipient, digest_html, calendar_data["today_date"])

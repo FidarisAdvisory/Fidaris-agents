@@ -1,9 +1,10 @@
+import datetime
 import json
 import os
 
 import anthropic
 
-SYSTEM_PROMPT = """You are a personal chief of staff for a busy advisor at Fidaris Advisory. Every morning you receive their calendar events, Notion tasks, and unanswered emails, then produce a structured morning briefing.
+SYSTEM_PROMPT = """You are a personal chief of staff for a busy advisor at Fidaris Advisory. Every morning you receive their calendar events, Notion tasks, unanswered emails, and financial data, then produce a structured morning briefing.
 
 INSTRUCTIONS:
 
@@ -12,95 +13,93 @@ INSTRUCTIONS:
    - For each item, add one sentence of context on what to focus on or watch out for.
 
 2. EMAILS REQUIRING ACTION
-   - You will receive a list of unanswered email threads. Show ALL of them - do not filter any out.
-   - Group them as: (a) Urgent - needs reply today, (b) This week - can wait a day or two.
-   - For each email, write one short sentence on what action is needed (reply, approve, follow up, etc.).
-   - Flag overdue emails (waiting more than 2 days) in red.
-   - If the unanswered emails list is empty, say "Inbox clear - no pending replies."
+   - Show ALL unanswered email threads. Do not filter any out.
+   - Group them: (a) Urgent - needs reply today, (b) This week - can wait.
+   - One sentence per email on what action is needed.
+   - Flag emails waiting more than 2 days in red.
+   - If empty: "Inbox clear - no pending replies."
 
 3. TOMORROW OVERVIEW
-   - Give a full picture of how tomorrow looks:
-     a) Total number of meetings and their times (list them all)
-     b) Identify open blocks of 30 minutes or more between meetings - these are breathing room
-     c) Rate the day: Light / Moderate / Heavy based on meeting load
-     d) Flag any meetings tomorrow that need preparation (trainings, workshops, client calls, presentations, demos, reviews) and whether a prep block exists in today's or tomorrow's calendar before that meeting. If no prep block exists, warn the user and suggest a time TODAY to prepare.
+   - All meetings with times, open blocks of 30+ min, day rating (Light/Moderate/Heavy).
+   - Flag any tomorrow meetings needing prep today.
 
-4. MEETING PREP ALERTS (today's meetings)
-   - For each of today's meetings that requires preparation, check if a prep block was scheduled before it.
-   - If NO prep block: flag with a warning and suggest a specific time window now.
-   - If prep block exists: confirm it with a checkmark.
-   - If no meetings need prep today: say so briefly.
+4. MEETING PREP ALERTS (today)
+   - Flag today's meetings needing prep without a prep block. Suggest a time window.
+   - Confirm meetings with an existing prep block.
 
-5. SUGGESTED FOCUS BLOCK
-   - Identify the best open time window today for deep, focused work.
-   - Suggest specifically what to work on during that block.
+5. REVENUE & PIPELINE
+   - Show month-to-date earned revenue per client with the formula: hours x rate = $amount.
+   - Show total earned and whether the pace is ahead or behind the month progress.
+     Example: "Day 13 of 31 (42% of month) — Revenue is $X which is Y% of a typical monthly target."
+   - Show total active AI training pipeline value and number of active leads.
+   - List HIGH priority leads only, with: name, company, stage, value, next action, and due date.
+   - If no revenue data: skip this section gracefully.
 
-OUTPUT FORMAT:
-Return a valid HTML fragment only - no <html>, <head>, or <body> tags. Use inline styles exclusively.
+6. SUGGESTED FOCUS BLOCK
+   - Best open window today for deep work, with a specific suggestion.
+
+OUTPUT FORMAT: Valid HTML fragment, no <html>/<head>/<body> tags, inline styles only.
 
 <h2 style="margin:0 0 4px;font-size:18px;color:#1a1a2e;">Today - {weekday, date}</h2>
-<p style="margin:0 0 20px;color:#718096;font-size:14px;">{One sentence: overall energy/theme of today}</p>
+<p style="margin:0 0 20px;color:#718096;font-size:14px;">{theme of the day}</p>
 
 <h3 style="margin:20px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.8px;color:#718096;">Calendar Priorities</h3>
-<ol style="margin:0;padding-left:20px;">
-  <li style="margin-bottom:10px;"><strong>{time} - {Event title}</strong>: {one sentence context}</li>
-</ol>
+<ol style="margin:0;padding-left:20px;"><li style="margin-bottom:10px;"><strong>{time} - {title}</strong>: {context}</li></ol>
 
 <h3 style="margin:20px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.8px;color:#718096;">Emails Requiring Action</h3>
-<ul style="margin:0;padding-left:20px;">
-  <li style="margin-bottom:8px;">
-    <strong>{Sender}</strong>: {Subject}
-    <span style="color:#718096;font-size:13px;"> ({age} - if overdue use <span style="color:#e53e3e;font-weight:600;">{X days overdue</span>})</span><br>
-    <span style="font-size:13px;color:#4a5568;">{What action is needed}</span>
-  </li>
-</ul>
+<ul style="margin:0;padding-left:20px;"><li style="margin-bottom:8px;"><strong>{Sender}</strong>: {Subject} <span style="color:#718096;font-size:13px;">({age})</span><br><span style="font-size:13px;color:#4a5568;">{action needed}</span></li></ul>
 
-<h3 style="margin:20px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.8px;color:#718096;">Tomorrow Overview - {tomorrow weekday, date}</h3>
-<p style="margin:0 0 8px;"><strong>Load:</strong> {Light / Moderate / Heavy} &mdash; {X} meetings</p>
+<h3 style="margin:20px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.8px;color:#718096;">Tomorrow Overview - {date}</h3>
+<p style="margin:0 0 6px;"><strong>Load:</strong> {Light/Moderate/Heavy} &mdash; {N} meetings</p>
+<ul style="margin:0 0 10px;padding-left:20px;"><li>{time} - {meeting}</li></ul>
+<p style="margin:0 0 6px;"><strong>Open blocks:</strong> {gaps or "None"}</p>
+
+<h3 style="margin:20px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.8px;color:#718096;">Meeting Prep Alerts</h3>
+<ul style="margin:0;padding-left:20px;"><li><span style="color:#d97706;font-weight:600;">&#9888; {meeting}</span> - No prep block. Use {window}.<br><!-- or: <span style="color:#38a169;font-weight:600;">&#10003; {meeting}</span> - Prep at {time}. --></li></ul>
+
+<h3 style="margin:20px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.8px;color:#718096;">Revenue &amp; Pipeline</h3>
+<p style="margin:0 0 6px;"><strong>{Month} MTD:</strong> <span style="font-size:16px;font-weight:700;color:#2d3748;">${total_earned}</span> &mdash; Day {N} of {total} ({pct}% of month)</p>
 <ul style="margin:0 0 12px;padding-left:20px;">
-  <li style="margin-bottom:4px;">{time} - {meeting title}</li>
+  <li>CEMEX: {hrs} hrs &times; $125 = <strong>${amount}</strong></li>
+  <li>CFP: {hrs} hrs &times; $125 = <strong>${amount}</strong></li>
+  <li>DEACERO: {hrs} hrs &times; $82 = <strong>${amount}</strong></li>
 </ul>
-<p style="margin:0 0 8px;"><strong>Open blocks:</strong> {list each gap of 30min+ e.g. "10:00-11:30 AM (90 min), 3:00-5:00 PM (2 hrs)" - or "No open blocks" if fully booked}</p>
-<p style="margin:0 0 8px;"><strong>Prep needed:</strong></p>
-<ul style="margin:0;padding-left:20px;">
-  <li style="margin-bottom:6px;">
-    <span style="color:#d97706;font-weight:600;">&#9888; {Meeting needing prep}</span> - No prep block found. Prepare today during: {suggested window}.
-    <!-- OR: <span style="color:#38a169;font-weight:600;">&#10003; {Meeting}</span> - Prep block at {time}. -->
-  </li>
-</ul>
-
-<h3 style="margin:20px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.8px;color:#718096;">Meeting Prep Alerts (Today)</h3>
-<ul style="margin:0;padding-left:20px;">
-  <li style="margin-bottom:8px;">
-    <span style="color:#d97706;font-weight:600;">&#9888; {Meeting title} at {time}</span> - No prep block. Use {suggested window} to prepare.<br>
-    <!-- OR: <span style="color:#38a169;font-weight:600;">&#10003; {Meeting}</span> - Prep block at {time}. -->
-  </li>
-</ul>
+<p style="margin:0 0 6px;"><strong>AI Training Pipeline:</strong> ${pipeline_total} &mdash; {N} active leads</p>
+<ul style="margin:0;padding-left:20px;"><li style="margin-bottom:6px;"><strong>{name}</strong> ({company}) &mdash; {stage} &mdash; <span style="color:#38a169;font-weight:600;">${value}</span> &mdash; {next_action} by {date}</li></ul>
 
 <h3 style="margin:20px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.8px;color:#718096;">Suggested Focus Block</h3>
-<p style="margin:0;">{Best open window} - {what to work on and why}</p>
+<p style="margin:0;">{window} - {what to work on}</p>
 
-KEEP total length under 650 words. Be specific with times. Never skip the Emails section even if the list is empty."""
+Max 700 words total."""
 
 
 def synthesize_priorities(
     calendar_data: dict,
     notion_data: dict,
     unanswered_emails: list[dict],
+    revenue_data: dict,
 ) -> str:
-    """Call Claude to produce the HTML digest from the combined data."""
+    """Call Claude to produce the HTML digest from all data sources."""
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     model = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+
+    today = datetime.date.today()
+    if today.month == 12:
+        days_in_month = 31
+    else:
+        days_in_month = (today.replace(month=today.month + 1, day=1) - datetime.timedelta(days=1)).day
+    month_progress_pct = round(today.day / days_in_month * 100)
 
     user_message = f"""Date: {calendar_data['today_date']}
 Current time: {calendar_data['current_time']}
 Timezone: {os.environ.get('USER_TIMEZONE', 'America/Chicago')}
+Month progress: Day {today.day} of {days_in_month} ({month_progress_pct}% elapsed)
 
 CALENDAR - TODAY ({calendar_data['today_date']}):
-{json.dumps(calendar_data['today'], indent=2) if calendar_data['today'] else '(no events scheduled)'}
+{json.dumps(calendar_data['today'], indent=2) if calendar_data['today'] else '(no events)'}
 
 CALENDAR - TOMORROW ({calendar_data['tomorrow_date']}):
-{json.dumps(calendar_data['tomorrow'], indent=2) if calendar_data['tomorrow'] else '(no events scheduled)'}
+{json.dumps(calendar_data['tomorrow'], indent=2) if calendar_data['tomorrow'] else '(no events)'}
 
 NOTION TASKS - TODAY:
 {json.dumps(notion_data['today'], indent=2) if notion_data['today'] else '(none)'}
@@ -108,17 +107,21 @@ NOTION TASKS - TODAY:
 NOTION TASKS - TOMORROW:
 {json.dumps(notion_data['tomorrow'], indent=2) if notion_data['tomorrow'] else '(none)'}
 
-UNANSWERED EMAIL THREADS (last 7 days, oldest first):
-{json.dumps(unanswered_emails, indent=2) if unanswered_emails else '(none - inbox is clear)'}
+UNANSWERED EMAILS (last 7 days, oldest first):
+{json.dumps(unanswered_emails, indent=2) if unanswered_emails else '(none - inbox clear)'}
 
-IMPORTANT REMINDERS:
-- Include ALL unanswered emails in the Emails section. Do not filter any out.
-- For Tomorrow Overview, list every meeting with its time and calculate all open gaps.
-- Check every meeting on both today's and tomorrow's calendars for prep requirements."""
+REVENUE & PIPELINE:
+{json.dumps(revenue_data, indent=2) if revenue_data else '(not available)'}
+
+Reminders:
+- Show ALL unanswered emails, no filtering.
+- List every tomorrow meeting with times and calculate open gaps.
+- In Revenue, show per-client breakdown and pace vs month progress.
+- For pipeline, show high-priority leads with next action dates."""
 
     response = client.messages.create(
         model=model,
-        max_tokens=1400,
+        max_tokens=1600,
         system=[
             {
                 "type": "text",
