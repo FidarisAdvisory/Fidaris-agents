@@ -1,5 +1,5 @@
 """
-One-time OAuth2 setup script — run this locally to obtain a refresh token.
+One-time OAuth2 setup script - run this locally to obtain a refresh token.
 
 Usage:
   1. Create an OAuth 2.0 Client ID (Desktop app) in Google Cloud Console.
@@ -7,7 +7,7 @@ Usage:
   2. Set environment variables:
        export GOOGLE_CLIENT_ID=<your-client-id>
        export GOOGLE_CLIENT_SECRET=<your-client-secret>
-  3. Run: python -m agent.setup_oauth
+  3. Run: python3 -m agent.setup_oauth
   4. Authorize in the browser that opens.
   5. Copy the printed GOOGLE_REFRESH_TOKEN into your GitHub Actions secrets.
 
@@ -30,7 +30,7 @@ def run_oauth_flow() -> None:
     try:
         from google_auth_oauthlib.flow import InstalledAppFlow
     except ImportError:
-        print("Run: pip install google-auth-oauthlib")
+        print("Run: pip3 install google-auth-oauthlib")
         return
 
     client_config = {

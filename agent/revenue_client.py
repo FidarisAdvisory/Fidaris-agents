@@ -46,7 +46,6 @@ def get_monthly_revenue() -> dict:
 
     client_revenue = {}
     total_earned = 0.0
-    access_errors = []
 
     for client_name, db_id in TIME_LOG_DATABASES.items():
         rate = HOURLY_RATES[client_name]
@@ -90,9 +89,7 @@ def get_monthly_revenue() -> dict:
             print(f"[REVENUE]   {client_name}: {total_hours:.1f} hrs x ${rate} = ${revenue:.2f}")
 
         except Exception as e:
-            err_msg = f"{type(e).__name__}: {e}"
-            print(f"[REVENUE] ERROR querying {client_name}: {err_msg}")
-            access_errors.append(f"{client_name} ({err_msg})")
+            print(f"[REVENUE] ERROR querying {client_name}: {type(e).__name__}: {e}")
             client_revenue[client_name] = {"hours": 0.0, "rate": rate, "revenue": 0.0}
 
     print(f"[REVENUE] Total earned this month: ${total_earned:.2f}")
@@ -101,15 +98,12 @@ def get_monthly_revenue() -> dict:
     pipeline = _get_pipeline(notion)
     print(f"[REVENUE] Pipeline: ${pipeline.get('total_value', 0):.2f} across {pipeline.get('active_count', 0)} leads")
 
-    result = {
+    return {
         "month": month_name,
         "clients": client_revenue,
         "total_earned": round(total_earned, 2),
         "pipeline": pipeline,
     }
-    if access_errors:
-        result["access_errors"] = access_errors
-    return result
 
 
 def _sum_hours(response: dict) -> float:
