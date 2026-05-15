@@ -3,38 +3,42 @@ import os
 
 import requests
 
-FATHOM_API_BASE = os.environ.get("FATHOM_API_BASE", "https://api.fathom.video")
+FATHOM_API_BASE = os.environ.get("FATHOM_API_BASE", "https://api.fathom.ai/external/v1")
 _MY_NAME_KEYWORDS = ["fidel", "salazar"]
 
 
 def get_todays_action_items(my_email: str) -> dict:
     """
-    Fetch action items from today's Fathom recordings via the Fathom REST API.
+    Fetch action items from today's Fathom recordings.
     Returns {"mine": [...], "others": [...], "meetings_checked": N}.
 
-    Requires FATHOM_API_KEY env var (Settings → API in the Fathom web app).
-    Gracefully returns empty results if the API key is absent or calls fail.
+    Requires FATHOM_API_KEY env var (Fathom web app → Settings → API).
+    Auth: X-Api-Key header. Endpoint: GET /meetings.
     """
     api_key = os.environ.get("FATHOM_API_KEY")
     if not api_key:
         print("FATHOM_API_KEY not set — skipping Fathom data.")
         return {"mine": [], "others": [], "meetings_checked": 0}
 
-    headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
+    headers = {"X-Api-Key": api_key, "Accept": "application/json"}
     today = datetime.date.today().isoformat()
 
-    calls = _list_todays_calls(headers, today)
-    if calls is None:
+    meetings = _list_todays_meetings(headers, today)
+    if meetings is None:
         return {"mine": [], "others": [], "meetings_checked": 0}
 
+    print(f"  Fathom: {len(meetings)} meeting(s) found for {today}")
     mine, others = [], []
-    for call in calls:
-        title = call.get("title") or call.get("name") or "Unknown Meeting"
-        action_items = call.get("action_items") or []
 
-        # If action_items not embedded, try fetching per-call detail
-        if not action_items and call.get("id"):
-            action_items = _fetch_call_action_items(headers, call["id"])
+    for meeting in meetings:
+        title = meeting.get("title") or meeting.get("name") or "Unknown Meeting"
+        action_items = meeting.get("action_items") or []
+
+        # If not embedded, try fetching from the per-meeting detail endpoint
+        if not action_items:
+            meeting_id = meeting.get("id") or meeting.get("recording_id")
+            if meeting_id:
+                action_items = _fetch_meeting_action_items(headers, meeting_id)
 
         for item in action_items:
             text = (
@@ -65,11 +69,11 @@ def get_todays_action_items(my_email: str) -> dict:
             else:
                 others.append(task)
 
-    return {"mine": mine, "others": others, "meetings_checked": len(calls)}
+    return {"mine": mine, "others": others, "meetings_checked": len(meetings)}
 
 
-def _list_todays_calls(headers: dict, today: str) -> list | None:
-    """Return raw calls list for today, or None on failure."""
+def _list_todays_meetings(headers: dict, today: str) -> list | None:
+    """Return raw meetings list for today, or None on failure."""
     params = {
         "from": f"{today}T00:00:00Z",
         "to": f"{today}T23:59:59Z",
@@ -78,28 +82,36 @@ def _list_todays_calls(headers: dict, today: str) -> list | None:
     }
     try:
         resp = requests.get(
-            f"{FATHOM_API_BASE}/v1/calls",
+            f"{FATHOM_API_BASE}/meetings",
             headers=headers,
             params=params,
             timeout=30,
         )
         resp.raise_for_status()
         data = resp.json()
-        return data.get("calls") or data.get("data") or data.get("results") or []
+        # Handle both list and paginated object responses
+        if isinstance(data, list):
+            return data
+        return data.get("meetings") or data.get("data") or data.get("results") or []
+    except requests.HTTPError as exc:
+        print(f"Fathom /meetings HTTP error {exc.response.status_code}: {exc.response.text[:300]}")
+        return None
     except requests.RequestException as exc:
-        print(f"Fathom /v1/calls failed: {exc}")
+        print(f"Fathom /meetings request failed: {exc}")
         return None
 
 
-def _fetch_call_action_items(headers: dict, call_id: str) -> list:
-    """Fetch action items for a single call from /v1/calls/{id}."""
-    try:
-        resp = requests.get(
-            f"{FATHOM_API_BASE}/v1/calls/{call_id}",
-            headers=headers,
-            timeout=30,
-        )
-        resp.raise_for_status()
-        return resp.json().get("action_items") or []
-    except requests.RequestException:
-        return []
+def _fetch_meeting_action_items(headers: dict, meeting_id: str) -> list:
+    """Fetch action items for a single meeting from /meetings/{id}."""
+    for path in (f"/meetings/{meeting_id}", f"/recordings/{meeting_id}"):
+        try:
+            resp = requests.get(
+                f"{FATHOM_API_BASE}{path}",
+                headers=headers,
+                timeout=30,
+            )
+            if resp.ok:
+                return resp.json().get("action_items") or []
+        except requests.RequestException:
+            continue
+    return []

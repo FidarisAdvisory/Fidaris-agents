@@ -51,6 +51,7 @@ def _plain_text(prop_value: list) -> str:
 
 def _query_personal_tracker(client, database_id: str, my_user_id: str) -> list:
     """Query the Fidel Action Items Tracker for open items (Status != Done)."""
+    print(f"  Querying personal tracker: {database_id}")
     try:
         response = client.databases.query(
             database_id=database_id,
@@ -58,8 +59,11 @@ def _query_personal_tracker(client, database_id: str, my_user_id: str) -> list:
             page_size=100,
         )
     except Exception as exc:
-        print(f"Personal tracker query failed: {exc}")
+        print(f"  Personal tracker query failed: {exc}")
+        print("  → Make sure the Notion integration is connected to this database:")
+        print("    Open the database in Notion → ··· → Connections → add your integration")
         return []
+    print(f"  Personal tracker: {len(response.get('results', []))} open items")
 
     results = []
     for page in response.get("results", []):
@@ -100,6 +104,7 @@ def _query_personal_tracker(client, database_id: str, my_user_id: str) -> list:
 
 def _query_cemex_tracker(client, database_id: str) -> list:
     """Query the CEMEX Action Items Tracker for open items (Status != Done)."""
+    print(f"  Querying CEMEX tracker: {database_id}")
     try:
         response = client.databases.query(
             database_id=database_id,
@@ -107,8 +112,11 @@ def _query_cemex_tracker(client, database_id: str) -> list:
             page_size=100,
         )
     except Exception as exc:
-        print(f"CEMEX tracker query failed: {exc}")
+        print(f"  CEMEX tracker query failed: {exc}")
+        print("  → Make sure the Notion integration is connected to this database:")
+        print("    Open the database in Notion → ··· → Connections → add your integration")
         return []
+    print(f"  CEMEX tracker: {len(response.get('results', []))} open items")
 
     results = []
     for page in response.get("results", []):
